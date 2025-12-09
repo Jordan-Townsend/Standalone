@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meshtastic Command Center</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;800&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0e17;
+            --bg-darker: #050810;
+            --bg-card: #0f1419;
+            --bg-elevated: #1a1f2e;
+            --accent-cyan: #00d9ff;
+            --accent-magenta: #ff006e;
+            --accent-yellow: #ffbe0b;
+            --accent-green: #06ffa5;
+            --text-primary: #e8eaed;
+            --text-secondary: #9ba3af;
+            --text-dim: #64748b;
+            --border: rgba(255, 255, 255, 0.1);
+            --shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            font-family: 'Outfit', -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(0, 217, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 0, 110, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255, 190, 11, 0.05) 0%, transparent 40%);
+            pointer-events: none;
+            animation: bgShift 20s ease infinite;
+            z-index: 0;
+        }
+
+        @keyframes bgShift {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+        }
+
+        .app-container {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+
+        .header-content {
+            max-width: 1800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: -0.02em;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-dot.online { background: var(--accent-green); }
+        .status-dot.warning { background: var(--accent-yellow); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.9); }
+        }
+
+        /* Main Layout */
+        main {
+            flex: 1;
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+        }
+
+        /* Map Container */
+        .map-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .map-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            height: 600px;
+            position: relative;
+            box-shadow: var(--shadow);
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            filter: brightness(0.9) contrast(1.1) saturate(1.2);
+        }
+
+        .map-overlay {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            z-index: 1000;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--accent-cyan);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+        }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-green);
+            box-shadow: 0 10px 30px rgba(6, 255, 165, 0.3);
+        }
+
+        /* Input Fields */
+        input, textarea, select {
+            width: 100%;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        /* Node List */
+        .node-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .node-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .node-list::-webkit-scrollbar-track {
+            background: var(--bg-darker);
+            border-radius: 4px;
+        }
+
+        .node-list::-webkit-scrollbar-thumb {
+            background: var(--accent-cyan);
+            border-radius: 4px;
+        }
+
+        .node-item {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .node-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent-green);
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .node-item:hover {
+            border-color: var(--accent-cyan);
+            transform: translateX(4px);
+        }
+
+        .node-item:hover::before {
+            transform: scaleY(1);
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .node-name {
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+        }
+
+        .node-id {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .node-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .metric {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-label {
+            color: var(--text-dim);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+        }
+
+        .metric-value {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .metric-value.good { color: var(--accent-green); }
+        .metric-value.warning { color: var(--accent-yellow); }
+        .metric-value.bad { color: var(--accent-magenta); }
+
+        /* Message Log */
+        .message-log {
+            background: var(--bg-darker);
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .message-log::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .message-log::-webkit-scrollbar-track {
+            background: var(--bg-card);
+            border-radius: 4px;
+        }
+
+        .message-log::-webkit-scrollbar-thumb {
+            background: var(--accent-magenta);
+            border-radius: 4px;
+        }
+
+        .message {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent-cyan);
+            border-radius: 4px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+
+        .message-body {
+            color: var(--text-primary);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: var(--bg-elevated);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--accent-yellow);
+            transform: scale(1.05);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            margin-top: 0.25rem;
+        }
+
+        /* Actions Grid */
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+            
+            .control-panel {
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid, .actions-grid {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .status-bar {
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: flex-end;
+            }
+        }
+
+        /* Leaflet custom styles */
+        .custom-marker {
+            background: var(--accent-cyan);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid var(--bg-dark);
+            box-shadow: 0 0 20px var(--accent-cyan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: var(--bg-dark);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="header-content">
+                <h1>⚡ MESHTASTIC_COMMAND</h1>
+                <div class="status-bar">
+                    <div class="status-item">
+                        <span class="status-dot online"></span>
+                        <span id="connection-status">Connected</span>
+                    </div>
+                    <div class="status-item">
+                        <span>Nodes: <strong id="node-count">0</strong></span>
+                    </div>
+                    <div class="status-item">
+                        <span>Range: <strong id="max-range">0 km</strong></span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Map Section -->
+            <div class="map-section">
+                <div class="map-container">
+                    <div id="map"></div>
+                    <div class="map-overlay">
+                        <div>📍 Coverage Area</div>
+                        <div style="margin-top: 0.5rem; color: var(--text-dim);">
+                            <span id="coverage-info">Initializing...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Network Statistics</h3>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-messages">0</div>
+                            <div class="stat-label">Messages</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avg-snr">0 dB</div>
+                            <div class="stat-label">Avg SNR</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="active-nodes">0</div>
+                            <div class="stat-label">Active Nodes</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="uptime">0h</div>
+                            <div class="stat-label">Uptime</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Message Log -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Message Log</h3>
+                        <button class="btn btn-secondary" onclick="clearMessages()">Clear</button>
+                    </div>
+                    <div class="message-log" id="message-log">
+                        <div class="message">
+                            <div class="message-header">
+                                <span>System</span>
+                                <span id="init-time"></span>
+                            </div>
+                            <div class="message-body">🚀 Meshtastic Command Center initialized</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Quick Actions</h3>
+                    </div>
+                    <div class="actions-grid">
+                        <button class="btn" onclick="startDiscovery()">
+                            🔍 Start Discovery
+                        </button>
+                        <button class="btn btn-secondary" onclick="pingAll()">
+                            📡 Ping All
+                        </button>
+                        <button class="btn btn-secondary" onclick="openBroadcastModal()">
+                            📢 Broadcast
+                        </button>
+                        <button class="btn btn-secondary" onclick="exportData()">
+                            💾 Export Data
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Discovered Nodes -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Discovered Nodes</h3>
+                        <span id="last-update" style="font-size: 0.75rem; color: var(--text-dim);"></span>
+                    </div>
+                    <div class="node-list" id="node-list">
+                        <div style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                            No nodes discovered yet. Start discovery to find mesh nodes.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Device Configuration -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Device Config</h3>
+                    </div>
+                    <div class="form-group">
+                        <label>Device Port</label>
+                        <input type="text" id="device-port" value="/dev/ttyACM0" placeholder="/dev/ttyACM0">
+                    </div>
+                    <div class="form-group">
+                        <label>Region</label>
+                        <select id="region">
+                            <option value="US">US (915 MHz)</option>
+                            <option value="EU_868">EU (868 MHz)</option>
+                            <option value="EU_433">EU (433 MHz)</option>
+                            <option value="CN">CN (470 MHz)</option>
+                            <option value="JP">JP (920 MHz)</option>
+                            <option value="ANZ">ANZ (915 MHz)</option>
+                        </select>
+                    </div>
+                    <button class="btn" onclick="connectDevice()" style="width: 100%;">
+                        Connect Device
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Broadcast Modal -->
+    <div class="modal" id="broadcast-modal">
+        <div class="modal-content">
+            <div class="card-header">
+                <h3 class="card-title">Broadcast Message</h3>
+            </div>
+            <div class="form-group">
+                <label>Message Type</label>
+                <select id="message-type">
+                    <option value="text">Text Message</option>
+                    <option value="position">Position Update</option>
+                    <option value="alert">Emergency Alert</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Message Content</label>
+                <textarea id="broadcast-message" placeholder="Enter your message..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Target</label>
+                <select id="broadcast-target">
+                    <option value="all">All Nodes (Broadcast)</option>
+                    <option value="selected">Selected Nodes</option>
+                </select>
+            </div>
+            <div class="actions-grid">
+                <button class="btn" onclick="sendBroadcast()">Send</button>
+                <button class="btn btn-secondary" onclick="closeBroadcastModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        let map;
+        let markers = {};
+        let nodes = new Map();
+        let messageCount = 0;
+        let startTime = Date.now();
+
+        function initMap() {
+            // Default to Gresham, Oregon
+            map = L.map('map').setView([45.4981, -122.4404], 11);
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            // Add circle to show potential coverage
+            L.circle([45.4981, -122.4404], {
+                color: '#00d9ff',
+                fillColor: '#00d9ff',
+                fillOpacity: 0.1,
+                radius: 5000 // 5km radius
+            }).addTo(map);
+        }
+
+        function addNodeToMap(node) {
+            if (node.position && node.position.latitude && node.position.longitude) {
+                const lat = node.position.latitude;
+                const lon = node.position.longitude;
+
+                // Remove existing marker if it exists
+                if (markers[node.id]) {
+                    map.removeLayer(markers[node.id]);
+                }
+
+                // Create custom icon
+                const icon = L.divIcon({
+                    className: 'custom-marker',
+                    html: '📡',
+                    iconSize: [30, 30]
+                });
+
+                // Add marker
+                const marker = L.marker([lat, lon], { icon: icon }).addTo(map);
+                
+                // Add popup
+                marker.bindPopup(`
+                    <div style="font-family: 'JetBrains Mono', monospace; padding: 0.5rem;">
+                        <strong style="color: #00d9ff;">${node.name}</strong><br>
+                        <small style="color: #64748b;">${node.id}</small><br>
+                        <br>
+                        <strong>SNR:</strong> ${node.snr || 'N/A'} dB<br>
+                        <strong>RSSI:</strong> ${node.rssi || 'N/A'} dBm<br>
+                        <strong>Hops:</strong> ${node.hops || 0}<br>
+                        <strong>Battery:</strong> ${node.battery || 'N/A'}%
+                    </div>
+                `);
+
+                markers[node.id] = marker;
+
+                // Update coverage info
+                updateCoverage();
+            }
+        }
+
+        function updateCoverage() {
+            const nodePositions = Array.from(nodes.values())
+                .filter(n => n.position)
+                .map(n => [n.position.latitude, n.position.longitude]);
+
+            if (nodePositions.length > 0) {
+                const bounds = L.latLngBounds(nodePositions);
+                const center = bounds.getCenter();
+                const radius = center.distanceTo(bounds.getNorthEast());
+                
+                document.getElementById('coverage-info').textContent = 
+                    `${(radius / 1000).toFixed(2)} km radius | ${nodePositions.length} nodes`;
+                document.getElementById('max-range').textContent = 
+                    `${(radius / 1000).toFixed(2)} km`;
+            }
+        }
+
+        function addNode(nodeData) {
+            const node = {
+                id: nodeData.id,
+                name: nodeData.name || nodeData.id,
+                snr: nodeData.snr,
+                rssi: nodeData.rssi,
+                hops: nodeData.hops || 0,
+                battery: nodeData.battery,
+                position: nodeData.position,
+                lastSeen: new Date(),
+                packets: nodeData.packets || 1
+            };
+
+            nodes.set(node.id, node);
+            updateNodeList();
+            addNodeToMap(node);
+            updateStats();
+            
+            addMessage('System', `Node discovered: ${node.name}`);
+        }
+
+        function updateNodeList() {
+            const nodeList = document.getElementById('node-list');
+            
+            if (nodes.size === 0) {
+                nodeList.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                        No nodes discovered yet. Start discovery to find mesh nodes.
+                    </div>
+                `;
+                return;
+            }
+
+            nodeList.innerHTML = Array.from(nodes.values())
+                .sort((a, b) => b.lastSeen - a.lastSeen)
+                .map(node => {
+                    const snrClass = node.snr > 5 ? 'good' : node.snr > 0 ? 'warning' : 'bad';
+                    const rssiClass = node.rssi > -90 ? 'good' : node.rssi > -110 ? 'warning' : 'bad';
+                    
+                    return `
+                        <div class="node-item" onclick="focusNode('${node.id}')">
+                            <div class="node-header">
+                                <span class="node-name">${node.name}</span>
+                                <span class="node-id">${node.id}</span>
+                            </div>
+                            <div class="node-metrics">
+                                <div class="metric">
+                                    <span class="metric-label">SNR</span>
+                                    <span class="metric-value ${snrClass}">${node.snr || 'N/A'} dB</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">RSSI</span>
+                                    <span class="metric-value ${rssiClass}">${node.rssi || 'N/A'} dBm</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Hops</span>
+                                    <span class="metric-value">${node.hops}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            document.getElementById('node-count').textContent = nodes.size;
+            document.getElementById('last-update').textContent = 
+                `Updated ${new Date().toLocaleTimeString()}`;
+        }
+
+        function focusNode(nodeId) {
+            const node = nodes.get(nodeId);
+            if (node && node.position) {
+                map.setView([node.position.latitude, node.position.longitude], 14);
+                if (markers[nodeId]) {
+                    markers[nodeId].openPopup();
+                }
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('total-messages').textContent = messageCount;
+            document.getElementById('active-nodes').textContent = nodes.size;
+            
+            // Calculate average SNR
+            const avgSnr = Array.from(nodes.values())
+                .filter(n => n.snr != null)
+                .reduce((sum, n, _, arr) => sum + n.snr / arr.length, 0);
+            document.getElementById('avg-snr').textContent = 
+                avgSnr ? avgSnr.toFixed(1) + ' dB' : 'N/A';
+            
+            // Update uptime
+            const uptime = Math.floor((Date.now() - startTime) / 1000 / 60 / 60);
+            document.getElementById('uptime').textContent = `${uptime}h`;
+        }
+
+        function addMessage(from, text, type = 'info') {
+            messageCount++;
+            const log = document.getElementById('message-log');
+            const message = document.createElement('div');
+            message.className = 'message';
+            message.innerHTML = `
+                <div class="message-header">
+                    <span>${from}</span>
+                    <span>${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div class="message-body">${text}</div>
+            `;
+            log.appendChild(message);
+            log.scrollTop = log.scrollHeight;
+            updateStats();
+        }
+
+        function clearMessages() {
+            const log = document.getElementById('message-log');
+            log.innerHTML = `
+                <div class="message">
+                    <div class="message-header">
+                        <span>System</span>
+                        <span>${new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div class="message-body">Message log cleared</div>
+                </div>
+            `;
+            messageCount = 0;
+            updateStats();
+        }
+
+        // Mock Discovery Function (Replace with actual Meshtastic API)
+        function startDiscovery() {
+            addMessage('System', '🔍 Starting cascade discovery...');
+            
+            // Simulate discovering nodes
+            setTimeout(() => {
+                addNode({
+                    id: '!a1b2c3d4',
+                    name: 'Base Station',
+                    snr: 8.5,
+                    rssi: -85,
+                    hops: 0,
+                    battery: 95,
+                    position: { latitude: 45.4981, longitude: -122.4404 }
+                });
+            }, 1000);
+
+            setTimeout(() => {
+                addNode({
+                    id: '!e5f6g7h8',
+                    name: 'Node Alpha',
+                    snr: 4.2,
+                    rssi: -105,
+                    hops: 1,
+                    battery: 78,
+                    position: { latitude: 45.5081, longitude: -122.4504 }
+                });
+            }, 2000);
+
+            setTimeout(() => {
+                addNode({
+                    id: '!i9j0k1l2',
+                    name: 'Node Beta',
+                    snr: 6.8,
+                    rssi: -92,
+                    hops: 1,
+                    battery: 88,
+                    position: { latitude: 45.4881, longitude: -122.4304 }
+                });
+            }, 3000);
+
+            setTimeout(() => {
+                addMessage('System', '✅ Discovery complete! Found 3 nodes.');
+            }, 4000);
+        }
+
+        function pingAll() {
+            addMessage('System', '📡 Pinging all nodes...');
+            setTimeout(() => {
+                addMessage('System', `✅ Received ${nodes.size} responses`);
+            }, 1500);
+        }
+
+        function openBroadcastModal() {
+            document.getElementById('broadcast-modal').classList.add('active');
+        }
+
+        function closeBroadcastModal() {
+            document.getElementById('broadcast-modal').classList.remove('active');
+        }
+
+        function sendBroadcast() {
+            const message = document.getElementById('broadcast-message').value;
+            const type = document.getElementById('message-type').value;
+            
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+
+            addMessage('You', `📢 ${message}`);
+            closeBroadcastModal();
+            
+            // Clear form
+            document.getElementById('broadcast-message').value = '';
+        }
+
+        function exportData() {
+            const data = {
+                nodes: Array.from(nodes.values()),
+                timestamp: new Date().toISOString(),
+                stats: {
+                    totalNodes: nodes.size,
+                    totalMessages: messageCount,
+                    uptime: Date.now() - startTime
+                }
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `meshtastic-data-${Date.now()}.json`;
+            a.click();
+            
+            addMessage('System', '💾 Data exported successfully');
+        }
+
+        function connectDevice() {
+            const port = document.getElementById('device-port').value;
+            const region = document.getElementById('region').value;
+            
+            addMessage('System', `Connecting to ${port} (${region})...`);
+            
+            setTimeout(() => {
+                document.getElementById('connection-status').textContent = 'Connected';
+                addMessage('System', '✅ Device connected successfully');
+            }, 1500);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            document.getElementById('init-time').textContent = new Date().toLocaleTimeString();
+            
+            // Auto-start demo discovery
+            setTimeout(startDiscovery, 2000);
+        });
+
+        // Close modal on outside click
+        document.getElementById('broadcast-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'broadcast-modal') {
+                closeBroadcastModal();
+            }
+        });
+    </script>
+</body>
+</html>
