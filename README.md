@@ -173,4 +173,7 @@ General inquiries can be submitted through GitHub Issues.
 
 Thanks to the Meshtastic development community for building the foundation that enables projects like this. This tool exists because of their continued work and dedication.
 
+This was initally ai generated. Human maintained. 
+
+
 I'm currently awaiting my first meshtastic node to arrive. A Lilygo S3 watch. If you have any spare hardware that needs to be tested on the network let me know. Jordan@townsendsdesigns.com
